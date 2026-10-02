@@ -1,0 +1,20 @@
+{
+  "name": "crs-denim-warehouse-scanner",
+  "version": "1.0.0",
+  "description": "Unified Web-Based Warehouse Scanner & Inventory Dashboard for CRS Denim",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "warehouse",
+    "scanner",
+    "ocr",
+    "tesseract",
+    "inventory",
+    "crs-denim"
+  ],
+  "author": "CRS Denim Engineering",
+  "license": "ISC"
+}

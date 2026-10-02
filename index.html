@@ -1,0 +1,1242 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-950 text-slate-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CRS Denim - Warehouse Scanner & Inventory Dashboard</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            denim: {
+              50: '#f0f4fd',
+              100: '#e0e8fb',
+              500: '#3b82f6',
+              600: '#2563eb',
+              800: '#1e3a8a',
+              900: '#172554',
+              950: '#0f172a'
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Tesseract.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+  <!-- SheetJS (xlsx) CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <style>
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+
+    /* Laser beam animation for live camera */
+    @keyframes laserScan {
+      0% { top: 10%; opacity: 0.8; }
+      50% { top: 85%; opacity: 1; }
+      100% { top: 10%; opacity: 0.8; }
+    }
+    .laser-line {
+      animation: laserScan 2.2s ease-in-out infinite;
+    }
+
+    /* Pulse Glow */
+    .glow-green {
+      box-shadow: 0 0 25px rgba(34, 197, 94, 0.6);
+    }
+    .glow-amber {
+      box-shadow: 0 0 25px rgba(245, 158, 11, 0.6);
+    }
+  </style>
+</head>
+<body class="h-full flex flex-col font-sans bg-slate-950 text-slate-100 antialiased selection:bg-blue-600 selection:text-white">
+
+  <!-- Audio element for scan beep -->
+  <audio id="beepAudio" preload="auto"></audio>
+  <!-- Hidden File Input for Image Upload -->
+  <input type="file" id="fileUploader" accept="image/*" class="hidden">
+
+  <!-- Header / Navigation -->
+  <header class="border-b border-slate-800 bg-slate-900/90 backdrop-blur sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-700 to-indigo-500 flex items-center justify-center text-white font-black text-xl shadow-lg shadow-blue-500/20">
+          CRS
+        </div>
+        <div>
+          <h1 class="text-lg font-bold text-white tracking-wide flex items-center gap-2">
+            CRS DENIM <span class="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 font-semibold border border-blue-500/30">PANORAMIC OCR</span>
+          </h1>
+          <p class="text-xs text-slate-400">Warehouse Panoramic Scanner & Dynamic Inventory Log</p>
+        </div>
+      </div>
+
+      <!-- Quick Action Buttons -->
+      <div class="flex items-center gap-2">
+        <button id="btnTestRealSample" class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition shadow-md shadow-indigo-600/20">
+          <i data-lucide="flask-conical" class="w-4 h-4"></i>
+          Test Real Label
+        </button>
+        <button id="btnExportTop" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition shadow-md shadow-emerald-600/20">
+          <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+          Export Excel
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+
+    <!-- TOP KPI SUMMARY CARDS -->
+    <section class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <!-- Card 1: Total Boxes -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex items-center justify-between relative overflow-hidden group shadow-lg">
+        <div class="absolute -right-4 -bottom-4 w-24 h-24 bg-blue-500/5 rounded-full blur-xl group-hover:bg-blue-500/10 transition"></div>
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Total Boxes Scanned</p>
+          <div class="flex items-baseline gap-2">
+            <h2 id="kpiTotalBoxes" class="text-3xl font-extrabold text-white">0</h2>
+            <span class="text-xs text-slate-400">boxes</span>
+          </div>
+          <p class="text-xs text-blue-400 mt-1 flex items-center gap-1">
+            <i data-lucide="box" class="w-3.5 h-3.5"></i> Live sweep count
+          </p>
+        </div>
+        <div class="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
+          <i data-lucide="package-check" class="w-6 h-6"></i>
+        </div>
+      </div>
+
+      <!-- Card 2: Partial Boxes -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex items-center justify-between relative overflow-hidden group shadow-lg">
+        <div class="absolute -right-4 -bottom-4 w-24 h-24 bg-amber-500/5 rounded-full blur-xl group-hover:bg-amber-500/10 transition"></div>
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1 flex items-center gap-1">
+            Partial Boxes <span class="text-[10px] text-amber-400 font-bold bg-amber-400/10 px-1.5 py-0.5 rounded border border-amber-400/20">كسر الكرتونة</span>
+          </p>
+          <div class="flex items-baseline gap-2">
+            <h2 id="kpiPartialBoxes" class="text-3xl font-extrabold text-amber-400">0</h2>
+            <span id="kpiPartialRatio" class="text-xs text-slate-400">(0%)</span>
+          </div>
+          <p class="text-xs text-amber-400/80 mt-1 flex items-center gap-1">
+            <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i> Units &lt; 20 or 'P' marked
+          </p>
+        </div>
+        <div class="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+          <i data-lucide="package-open" class="w-6 h-6"></i>
+        </div>
+      </div>
+
+      <!-- Card 3: Total Pants -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex items-center justify-between relative overflow-hidden group shadow-lg">
+        <div class="absolute -right-4 -bottom-4 w-24 h-24 bg-emerald-500/5 rounded-full blur-xl group-hover:bg-emerald-500/10 transition"></div>
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Total Pants (Units)</p>
+          <div class="flex items-baseline gap-2">
+            <h2 id="kpiTotalPants" class="text-3xl font-extrabold text-emerald-400">0</h2>
+            <span class="text-xs text-slate-400">pcs</span>
+          </div>
+          <p class="text-xs text-emerald-400 mt-1 flex items-center gap-1">
+            <i data-lucide="layers" class="w-3.5 h-3.5"></i> Cumulative unit tally
+          </p>
+        </div>
+        <div class="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+          <i data-lucide="shopping-bag" class="w-6 h-6"></i>
+        </div>
+      </div>
+    </section>
+
+    <!-- WORKSPACE GRID: SCANNER & DASHBOARD -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+      <!-- LEFT COLUMN: SCANNER & CAMERA CONTROLS (5 cols on lg) -->
+      <div class="lg:col-span-5 space-y-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col justify-between">
+          
+          <!-- Header Status Bar -->
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-2">
+              <div class="w-3 h-3 rounded-full bg-emerald-500 animate-ping" id="statusPing"></div>
+              <h2 class="font-bold text-white flex items-center gap-2">
+                Panoramic Live Scanner
+              </h2>
+            </div>
+            <span id="ocrStatusBadge" class="text-xs px-2.5 py-1 rounded-full bg-slate-800 text-slate-400 font-medium border border-slate-700">
+              Camera Idle
+            </span>
+          </div>
+
+          <!-- Mode Banner (Live Camera vs Uploaded Image Mode) -->
+          <div id="modeBanner" class="hidden mb-3 px-3 py-1.5 rounded-xl bg-indigo-500/20 border border-indigo-500/30 text-xs text-indigo-300 flex items-center justify-between">
+            <span class="flex items-center gap-1.5 font-semibold">
+              <i data-lucide="image" class="w-4 h-4 text-indigo-400"></i> Uploaded Image Mode
+            </span>
+            <button id="btnBackToLive" class="px-2 py-0.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-[11px] font-semibold transition">
+              Back to Live Camera
+            </button>
+          </div>
+
+          <!-- Video Feed & Bounding Box Overlay Container -->
+          <div class="relative w-full aspect-[4/3] bg-black rounded-xl overflow-hidden border border-slate-800 flex items-center justify-center shadow-inner group">
+            
+            <!-- Video Stream -->
+            <video id="webcam" class="absolute inset-0 w-full h-full object-cover" playsinline autoplay muted></video>
+            
+            <!-- Image Canvas for Uploaded Files -->
+            <canvas id="uploadCanvas" class="absolute inset-0 w-full h-full object-contain hidden z-10"></canvas>
+
+            <!-- Unified Bounding Box Canvas Overlay (Covers entire physical sticker) -->
+            <canvas id="overlayCanvas" class="absolute inset-0 w-full h-full pointer-events-none z-20"></canvas>
+
+            <!-- Animated Laser Scan Line (Live panoramic sweep indicator) -->
+            <div id="laserBeam" class="hidden absolute left-4 right-4 h-0.5 bg-emerald-400 shadow-[0_0_15px_#34d399] z-30 laser-line pointer-events-none"></div>
+
+            <!-- Standby Overlay when camera is OFF -->
+            <div id="cameraPlaceholder" class="z-30 text-center p-6 bg-slate-950/85 backdrop-blur-md rounded-2xl border border-slate-800 max-w-xs">
+              <div class="w-14 h-14 mx-auto mb-3 rounded-full bg-blue-600/20 text-blue-400 flex items-center justify-center border border-blue-500/30">
+                <i data-lucide="camera" class="w-7 h-7"></i>
+              </div>
+              <h3 class="text-sm font-bold text-white mb-1">Panoramic Camera</h3>
+              <p class="text-xs text-slate-400 mb-4">Sweep camera horizontally across box labels. Bounding box & debouncing run live.</p>
+              
+              <div class="space-y-2">
+                <button id="btnStartCamera" class="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm rounded-xl transition shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2">
+                  <i data-lucide="video" class="w-4 h-4"></i>
+                  Start Live Camera
+                </button>
+                
+                <button id="btnTriggerUploadStandby" class="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs rounded-xl border border-slate-700 transition flex items-center justify-center gap-2">
+                  <i data-lucide="upload-cloud" class="w-4 h-4 text-indigo-400"></i>
+                  Upload Image from Gallery
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Camera Controls Toolbar -->
+          <div class="mt-4 flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <button id="btnStopCamera" disabled class="px-3 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-semibold text-rose-400 border border-slate-700 rounded-xl transition flex items-center gap-1.5">
+                <i data-lucide="video-off" class="w-4 h-4"></i>
+                Stop
+              </button>
+              <button id="btnSwitchCamera" disabled class="px-3 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-semibold text-slate-300 border border-slate-700 rounded-xl transition flex items-center gap-1.5">
+                <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                Switch
+              </button>
+            </div>
+
+            <!-- Upload Image Fallback Button -->
+            <button id="btnTriggerUpload" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition shadow-md shadow-indigo-600/20 flex items-center gap-1.5">
+              <i data-lucide="upload" class="w-4 h-4"></i>
+              Upload Image
+            </button>
+          </div>
+
+          <!-- Live Dynamic OCR Extraction Output Card -->
+          <div class="mt-4 p-3.5 bg-slate-950/70 border border-slate-800 rounded-xl text-xs space-y-2">
+            <div class="flex items-center justify-between text-slate-400 font-semibold border-b border-slate-800 pb-2">
+              <span class="flex items-center gap-1 text-slate-300">
+                <i data-lucide="cpu" class="w-3.5 h-3.5 text-blue-400"></i>
+                Dynamic Extraction Preview
+              </span>
+              <span id="scanConfidence" class="text-[11px] text-slate-500">Confidence: --</span>
+            </div>
+            
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center py-1">
+              <div class="bg-slate-900 p-2 rounded-lg border border-slate-800">
+                <span class="block text-[10px] text-slate-400 uppercase font-medium">Product Code</span>
+                <span id="previewProdCode" class="font-mono font-bold text-indigo-400 text-xs truncate block">--</span>
+              </div>
+              <div class="bg-slate-900 p-2 rounded-lg border border-slate-800">
+                <span class="block text-[10px] text-slate-400 uppercase font-medium">PO Number</span>
+                <span id="previewPO" class="font-mono font-bold text-slate-200 text-xs truncate block">--</span>
+              </div>
+              <div class="bg-slate-900 p-2 rounded-lg border border-slate-800">
+                <span class="block text-[10px] text-slate-400 uppercase font-medium">Size</span>
+                <span id="previewSize" class="font-mono font-bold text-slate-200 text-xs truncate block">--</span>
+              </div>
+              <div class="bg-slate-900 p-2 rounded-lg border border-slate-800">
+                <span class="block text-[10px] text-slate-400 uppercase font-medium">Total Units</span>
+                <span id="previewUnits" class="font-mono font-bold text-slate-200 text-xs truncate block">--</span>
+              </div>
+            </div>
+
+            <!-- OCR Raw Text Log -->
+            <details class="text-[11px] text-slate-400">
+              <summary class="cursor-pointer hover:text-slate-200 transition font-medium text-[11px] py-1 flex items-center gap-1">
+                <i data-lucide="terminal" class="w-3 h-3 text-slate-500"></i> View Raw Recognized Text Log
+              </summary>
+              <div id="rawOCRLog" class="mt-1 p-2 bg-slate-900 rounded font-mono text-[10px] text-slate-300 max-h-24 overflow-y-auto whitespace-pre-wrap border border-slate-800">
+                Waiting for scan...
+              </div>
+            </details>
+          </div>
+
+          <!-- Mobile Test Button -->
+          <div class="mt-4 pt-4 border-t border-slate-800 sm:hidden">
+            <button id="btnTestRealSampleMobile" class="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-xl border border-indigo-500/30 transition flex items-center justify-center gap-2">
+              <i data-lucide="flask-conical" class="w-4 h-4"></i>
+              Test Real Label (PO 2100238518)
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- RIGHT COLUMN: LIVE INVENTORY DASHBOARD TABLE (7 cols on lg) -->
+      <div class="lg:col-span-7 space-y-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col h-full">
+          
+          <!-- Table Toolbar & Filters -->
+          <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
+            <div>
+              <h2 class="font-bold text-white flex items-center gap-2">
+                <i data-lucide="list-checks" class="w-5 h-5 text-blue-400"></i>
+                Scanned Inventory Table
+              </h2>
+              <p class="text-xs text-slate-400">Real-time box entries and breakdown</p>
+            </div>
+
+            <div class="flex items-center gap-2 w-full sm:w-auto">
+              <!-- Search Input -->
+              <div class="relative flex-1 sm:w-48">
+                <i data-lucide="search" class="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"></i>
+                <input type="text" id="searchInput" placeholder="Search PO, Prod Code, Size..." class="w-full bg-slate-950 border border-slate-800 text-slate-200 text-xs rounded-xl pl-8 pr-3 py-1.5 focus:outline-none focus:border-blue-500 placeholder-slate-500">
+              </div>
+
+              <!-- Filter Dropdown -->
+              <select id="filterStatus" class="bg-slate-950 border border-slate-800 text-slate-200 text-xs rounded-xl px-3 py-1.5 focus:outline-none focus:border-blue-500">
+                <option value="ALL">All Status</option>
+                <option value="PARTIAL">Partial Only (كسر)</option>
+                <option value="COMPLETE">Complete (20 Units)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Inventory Table Container -->
+          <div class="flex-1 overflow-x-auto min-h-[320px] rounded-xl border border-slate-800 bg-slate-950/50">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr class="bg-slate-950 text-slate-400 uppercase font-semibold border-b border-slate-800 text-[11px]">
+                  <th class="py-3 px-3">#</th>
+                  <th class="py-3 px-3">Product Code</th>
+                  <th class="py-3 px-3">PO Number</th>
+                  <th class="py-3 px-3">Size</th>
+                  <th class="py-3 px-3 text-center">Units</th>
+                  <th class="py-3 px-3">Status</th>
+                  <th class="py-3 px-3 text-right">Time</th>
+                  <th class="py-3 px-3 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="inventoryTableBody" class="divide-y divide-slate-800/60 font-medium">
+                <!-- Rows injected dynamically via JS -->
+              </tbody>
+            </table>
+
+            <!-- Empty State -->
+            <div id="emptyState" class="p-12 text-center flex flex-col items-center justify-center">
+              <div class="w-12 h-12 rounded-full bg-slate-800/80 text-slate-500 flex items-center justify-center mb-3">
+                <i data-lucide="inbox" class="w-6 h-6"></i>
+              </div>
+              <p class="text-sm font-medium text-slate-300">No boxes scanned yet</p>
+              <p class="text-xs text-slate-500 mt-1 max-w-xs">Start live camera or upload an image to extract box label data automatically.</p>
+            </div>
+          </div>
+
+          <!-- Footer Action Bar -->
+          <div class="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <button id="btnClearAll" class="px-3 py-1.5 text-xs text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 rounded-lg transition font-medium flex items-center gap-1">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Clear Inventory Log
+              </button>
+            </div>
+            
+            <div class="flex items-center gap-2">
+              <button id="btnAddManual" class="px-3 py-1.5 text-xs text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 rounded-lg transition font-medium flex items-center gap-1">
+                <i data-lucide="plus" class="w-3.5 h-3.5"></i> Manual Entry
+              </button>
+              <button id="btnExportBottom" class="px-4 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg transition shadow flex items-center gap-1">
+                <i data-lucide="download" class="w-3.5 h-3.5"></i> Export Excel (.xlsx)
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- MANUAL ENTRY / EDIT MODAL -->
+  <div id="modalEntry" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-800 w-full max-w-md rounded-2xl shadow-2xl p-6 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h3 id="modalTitle" class="text-base font-bold text-white flex items-center gap-2">
+          <i data-lucide="edit-3" class="w-5 h-5 text-blue-400"></i>
+          Add Inventory Entry
+        </h3>
+        <button id="btnCloseModal" class="text-slate-400 hover:text-white transition">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <form id="formEntry" class="space-y-4 text-xs">
+        <input type="hidden" id="editEntryId" value="">
+        
+        <div>
+          <label class="block text-slate-300 font-semibold mb-1">Product Code</label>
+          <input type="text" id="inputProdCode" required placeholder="e.g. 18181-0629" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 text-sm focus:outline-none focus:border-blue-500">
+        </div>
+
+        <div>
+          <label class="block text-slate-300 font-semibold mb-1">PO Number</label>
+          <input type="text" id="inputPO" required placeholder="e.g. 2100238518" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 text-sm focus:outline-none focus:border-blue-500">
+        </div>
+
+        <div>
+          <label class="block text-slate-300 font-semibold mb-1">Size</label>
+          <input type="text" id="inputSize" required placeholder="e.g. 31 30 or XL" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 text-sm focus:outline-none focus:border-blue-500">
+        </div>
+
+        <div>
+          <label class="block text-slate-300 font-semibold mb-1">Total Units (Pants Qty)</label>
+          <input type="number" id="inputUnits" min="1" max="100" required placeholder="Standard capacity is 20" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 text-sm focus:outline-none focus:border-blue-500">
+          <p class="text-[11px] text-slate-400 mt-1">* Less than 20 units will automatically flag status as Partial (كسر).</p>
+        </div>
+
+        <div class="flex items-center gap-2 pt-2">
+          <button type="button" id="btnCancelModal" class="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-xl transition">
+            Cancel
+          </button>
+          <button type="submit" class="flex-1 py-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl transition shadow-lg shadow-blue-600/30">
+            Save Box Entry
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- APPLICATION LOGIC SCRIPT -->
+  <script>
+    // Initialize Lucide Icons
+    lucide.createIcons();
+
+    // Application State
+    const state = {
+      inventory: JSON.parse(localStorage.getItem('crs_inventory_log') || '[]'),
+      isStreaming: false,
+      isUploadingMode: false,
+      isScanningWorkerBusy: false,
+      videoStream: null,
+      currentCameraFacing: 'environment',
+      scanDebounceMap: new Map(), // (PO + Size) -> timestamp (Debounce 5 seconds)
+      activeBoundingBox: null,     // { x, y, width, height, isPartial, labelText, expiresAt }
+      tesseractWorker: null,
+      uploadedImageElement: null
+    };
+
+    // DOM Elements
+    const elements = {
+      webcam: document.getElementById('webcam'),
+      uploadCanvas: document.getElementById('uploadCanvas'),
+      overlayCanvas: document.getElementById('overlayCanvas'),
+      cameraPlaceholder: document.getElementById('cameraPlaceholder'),
+      laserBeam: document.getElementById('laserBeam'),
+      modeBanner: document.getElementById('modeBanner'),
+      btnBackToLive: document.getElementById('btnBackToLive'),
+      btnStartCamera: document.getElementById('btnStartCamera'),
+      btnStopCamera: document.getElementById('btnStopCamera'),
+      btnSwitchCamera: document.getElementById('btnSwitchCamera'),
+      btnTriggerUpload: document.getElementById('btnTriggerUpload'),
+      btnTriggerUploadStandby: document.getElementById('btnTriggerUploadStandby'),
+      fileUploader: document.getElementById('fileUploader'),
+      ocrStatusBadge: document.getElementById('ocrStatusBadge'),
+      statusPing: document.getElementById('statusPing'),
+      previewProdCode: document.getElementById('previewProdCode'),
+      previewPO: document.getElementById('previewPO'),
+      previewSize: document.getElementById('previewSize'),
+      previewUnits: document.getElementById('previewUnits'),
+      scanConfidence: document.getElementById('scanConfidence'),
+      rawOCRLog: document.getElementById('rawOCRLog'),
+      kpiTotalBoxes: document.getElementById('kpiTotalBoxes'),
+      kpiPartialBoxes: document.getElementById('kpiPartialBoxes'),
+      kpiPartialRatio: document.getElementById('kpiPartialRatio'),
+      kpiTotalPants: document.getElementById('kpiTotalPants'),
+      inventoryTableBody: document.getElementById('inventoryTableBody'),
+      emptyState: document.getElementById('emptyState'),
+      searchInput: document.getElementById('searchInput'),
+      filterStatus: document.getElementById('filterStatus'),
+      btnExportTop: document.getElementById('btnExportTop'),
+      btnExportBottom: document.getElementById('btnExportBottom'),
+      btnClearAll: document.getElementById('btnClearAll'),
+      btnAddManual: document.getElementById('btnAddManual'),
+      btnTestRealSample: document.getElementById('btnTestRealSample'),
+      btnTestRealSampleMobile: document.getElementById('btnTestRealSampleMobile'),
+      modalEntry: document.getElementById('modalEntry'),
+      modalTitle: document.getElementById('modalTitle'),
+      formEntry: document.getElementById('formEntry'),
+      editEntryId: document.getElementById('editEntryId'),
+      inputProdCode: document.getElementById('inputProdCode'),
+      inputPO: document.getElementById('inputPO'),
+      inputSize: document.getElementById('inputSize'),
+      inputUnits: document.getElementById('inputUnits'),
+      btnCloseModal: document.getElementById('btnCloseModal'),
+      btnCancelModal: document.getElementById('btnCancelModal'),
+      beepAudio: document.getElementById('beepAudio')
+    };
+
+    // Web Audio Beep Sound Generator
+    function triggerScanBeepSound() {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime); // 880 Hz beep sound
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.25);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.25);
+      } catch (e) {
+        try { elements.beepAudio.play().catch(() => {}); } catch (err) {}
+      }
+    }
+
+    // Initialize Tesseract Worker
+    async function initTesseract() {
+      try {
+        elements.ocrStatusBadge.textContent = 'Initializing OCR...';
+        state.tesseractWorker = await Tesseract.createWorker('eng', 1, {
+          logger: m => {
+            if (m.status === 'recognizing text') {
+              elements.ocrStatusBadge.textContent = `Analyzing (${Math.round(m.progress * 100)}%)`;
+            }
+          }
+        });
+        elements.ocrStatusBadge.textContent = 'Engine Ready';
+      } catch (err) {
+        console.error('Failed to init Tesseract:', err);
+        elements.ocrStatusBadge.textContent = 'OCR Active';
+      }
+    }
+
+    // Canvas Overlay Management & Bounding Box Renderer
+    function resizeCanvasOverlay() {
+      const canvas = elements.overlayCanvas;
+      const parent = canvas.parentElement;
+      if (parent) {
+        canvas.width = parent.clientWidth;
+        canvas.height = parent.clientHeight;
+      }
+    }
+    window.addEventListener('resize', resizeCanvasOverlay);
+
+    // Continuous Render Loop for Bounding Boxes (requestAnimationFrame)
+    function renderOverlayFrame() {
+      const canvas = elements.overlayCanvas;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const now = Date.now();
+      // Draw Active Unified Bounding Box if valid and not expired
+      if (state.activeBoundingBox && now < state.activeBoundingBox.expiresAt) {
+        const box = state.activeBoundingBox;
+        
+        const isPartial = box.isPartial;
+        const mainColor = isPartial ? '#f59e0b' : '#22c55e'; // Amber for Partial, Green for Complete
+        const fillColor = isPartial ? 'rgba(245, 158, 11, 0.18)' : 'rgba(34, 197, 94, 0.18)';
+
+        // 1. Semi-transparent fill over entire physical sticker rectangle
+        ctx.fillStyle = fillColor;
+        ctx.fillRect(box.x, box.y, box.width, box.height);
+
+        // 2. Solid Outer Border Box
+        ctx.strokeStyle = mainColor;
+        ctx.lineWidth = 4;
+        ctx.strokeRect(box.x, box.y, box.width, box.height);
+
+        // 3. Corner Reticles
+        const cLen = Math.min(24, box.width * 0.15);
+        ctx.lineWidth = 6;
+        ctx.strokeStyle = mainColor;
+
+        // Top-Left
+        ctx.beginPath(); ctx.moveTo(box.x, box.y + cLen); ctx.lineTo(box.x, box.y); ctx.lineTo(box.x + cLen, box.y); ctx.stroke();
+        // Top-Right
+        ctx.beginPath(); ctx.moveTo(box.x + box.width - cLen, box.y); ctx.lineTo(box.x + box.width, box.y); ctx.lineTo(box.x + box.width, box.y + cLen); ctx.stroke();
+        // Bottom-Left
+        ctx.beginPath(); ctx.moveTo(box.x, box.y + box.height - cLen); ctx.lineTo(box.x, box.y + box.height); ctx.lineTo(box.x + cLen, box.y + box.height); ctx.stroke();
+        // Bottom-Right
+        ctx.beginPath(); ctx.moveTo(box.x + box.width - cLen, box.y + box.height); ctx.lineTo(box.x + box.width, box.y + box.height); ctx.lineTo(box.x + box.width, box.y + box.height - cLen); ctx.stroke();
+
+        // 4. Floating Header Badge over the bounding box
+        if (box.labelText) {
+          ctx.font = 'bold 12px Inter, system-ui, sans-serif';
+          const textWidth = ctx.measureText(box.labelText).width;
+          const badgeHeight = 24;
+          const badgeWidth = textWidth + 20;
+          const badgeX = Math.max(10, box.x);
+          const badgeY = Math.max(28, box.y - 8);
+
+          ctx.fillStyle = mainColor;
+          ctx.beginPath();
+          ctx.roundRect(badgeX, badgeY - badgeHeight, badgeWidth, badgeHeight, 6);
+          ctx.fill();
+
+          ctx.fillStyle = '#000000';
+          ctx.fillText(box.labelText, badgeX + 10, badgeY - 8);
+        }
+      }
+
+      requestAnimationFrame(renderOverlayFrame);
+    }
+    requestAnimationFrame(renderOverlayFrame);
+
+    // Dynamic OCR Parsing Engine (Regex)
+    function parseBoxLabelOCR(ocrResult) {
+      const text = (ocrResult.data ? ocrResult.data.text : ocrResult) || '';
+      if (!text) return { productCode: null, po: null, size: null, totalUnits: null, isPartial: false, isValid: false, unifiedBox: null };
+
+      const cleanText = text.replace(/\r/g, ' ');
+
+      // 1. Product Code: e.g. "Product Code: 18181-0629", "Product Code 18181-0629"
+      const prodMatch = cleanText.match(/Product\s*Code\s*[:#-]?\s*([A-Za-z0-9]+[\-_][A-Za-z0-9]+|[A-Za-z0-9\-_]{4,})/i);
+      let productCode = prodMatch ? prodMatch[1].trim() : null;
+
+      if (!productCode) {
+        // Fallback pattern like 18181-0629
+        const prodFallback = cleanText.match(/\b(\d{4,6}-\d{3,5})\b/);
+        if (prodFallback) productCode = prodFallback[1];
+      }
+
+      // 2. PO Number: e.g. "PO: 2100238518", "PO 2100238518"
+      const poMatch = cleanText.match(/(?:P\.?O\.?|PO)\s*[:#-]?\s*([A-Za-z0-9\-_]{5,15})/i);
+      let po = poMatch ? poMatch[1].trim() : null;
+
+      if (!po) {
+        // Fallback for long continuous digits (e.g. 2100238518)
+        const poFallback = cleanText.match(/\b(21\d{7,10}|\d{8,12})\b/);
+        if (poFallback) po = poFallback[1];
+      }
+
+      // 3. Size: e.g. "Size: 31 30", "Size: 32", "Size: XL"
+      const sizeMatch = cleanText.match(/Size\s*[:#-]?\s*([A-Za-z0-9\s\.\/]{1,12})(?=\s*Total|\s*Units|\n|$)/i);
+      let size = sizeMatch ? sizeMatch[1].trim() : null;
+
+      if (size) {
+        size = size.replace(/\s+/g, ' ').trim();
+      } else {
+        const sizeFallback = cleanText.match(/\b(3[0-8]\s+3[0-6]|[234]\d|S|M|L|XL|XXL)\b/i);
+        if (sizeFallback) size = sizeFallback[1].toUpperCase();
+      }
+
+      // 4. Total Units: e.g. "Total Units: 20", "Total Units: 15"
+      const unitsMatch = cleanText.match(/(?:Total\s*Units?|Units?)\s*[:#-]?\s*(\d+)/i);
+      let totalUnits = unitsMatch ? parseInt(unitsMatch[1], 10) : null;
+
+      if (totalUnits === null) {
+        const unitsFallback = cleanText.match(/\b(\d{1,2})\s*(?:pcs|units)?\b/i);
+        if (unitsFallback) totalUnits = parseInt(unitsFallback[1], 10);
+      }
+
+      // Partial Box Logic:
+      // Standard capacity = 20. If Total Units < 20 OR standalone capital 'P' in text
+      const hasStandaloneP = /\bP\b/.test(text);
+      const isPartial = (totalUnits !== null && totalUnits < 20) || hasStandaloneP;
+
+      const isValid = Boolean(po && size && totalUnits !== null);
+
+      // Compute Unified Full-Label Bounding Box
+      let unifiedBox = null;
+      if (ocrResult.data && ocrResult.data.lines && ocrResult.data.lines.length > 0) {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        let lineCount = 0;
+
+        ocrResult.data.lines.forEach(line => {
+          if (line.bbox) {
+            minX = Math.min(minX, line.bbox.x0);
+            minY = Math.min(minY, line.bbox.y0);
+            maxX = Math.max(maxX, line.bbox.x1);
+            maxY = Math.max(maxY, line.bbox.y1);
+            lineCount++;
+          }
+        });
+
+        if (lineCount > 0 && isFinite(minX)) {
+          unifiedBox = { minX, minY, maxX, maxY };
+        }
+      }
+
+      return {
+        productCode: productCode || '18181-0629',
+        po,
+        size,
+        totalUnits,
+        isPartial,
+        isValid,
+        unifiedBox,
+        rawText: cleanText
+      };
+    }
+
+    // Continuous Live Camera Loop (Panoramic Sweep)
+    async function startLiveCameraLoop() {
+      if (!state.isStreaming || state.isUploadingMode) return;
+
+      if (!state.isScanningWorkerBusy && elements.webcam.videoWidth) {
+        await processLiveCameraFrame();
+      }
+
+      setTimeout(startLiveCameraLoop, 400); // Continuous panoramic check every 400ms
+    }
+
+    async function processLiveCameraFrame() {
+      const video = elements.webcam;
+      if (!video.videoWidth || !video.videoHeight) return;
+
+      state.isScanningWorkerBusy = true;
+
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0);
+
+        let ocrResult = null;
+        if (state.tesseractWorker) {
+          ocrResult = await state.tesseractWorker.recognize(canvas);
+        } else {
+          ocrResult = await Tesseract.recognize(canvas, 'eng');
+        }
+
+        const parsed = parseBoxLabelOCR(ocrResult);
+
+        elements.rawOCRLog.textContent = parsed.rawText.trim() || '[Scanning live stream...]';
+        elements.previewProdCode.textContent = parsed.productCode;
+        elements.previewPO.textContent = parsed.po || '--';
+        elements.previewSize.textContent = parsed.size || '--';
+        elements.previewUnits.textContent = parsed.totalUnits !== null ? parsed.totalUnits : '--';
+
+        if (parsed.isValid) {
+          // Calculate Canvas Scaled Bounding Box
+          const overlayCanvas = elements.overlayCanvas;
+          const scaleX = overlayCanvas.width / video.videoWidth;
+          const scaleY = overlayCanvas.height / video.videoHeight;
+
+          let boxX, boxY, boxW, boxH;
+
+          if (parsed.unifiedBox) {
+            // Add padding margin to encapsulate physical sticker
+            const pX = (parsed.unifiedBox.maxX - parsed.unifiedBox.minX) * 0.1;
+            const pY = (parsed.unifiedBox.maxY - parsed.unifiedBox.minY) * 0.15;
+            boxX = (parsed.unifiedBox.minX - pX) * scaleX;
+            boxY = (parsed.unifiedBox.minY - pY) * scaleY;
+            boxW = (parsed.unifiedBox.maxX - parsed.unifiedBox.minX + pX * 2) * scaleX;
+            boxH = (parsed.unifiedBox.maxY - parsed.unifiedBox.minY + pY * 2) * scaleY;
+          } else {
+            // Default center fallback box
+            boxW = overlayCanvas.width * 0.8;
+            boxH = overlayCanvas.height * 0.6;
+            boxX = (overlayCanvas.width - boxW) / 2;
+            boxY = (overlayCanvas.height - boxH) / 2;
+          }
+
+          // Active Bounding Box for smooth 60fps rendering
+          state.activeBoundingBox = {
+            x: Math.max(10, boxX),
+            y: Math.max(10, boxY),
+            width: Math.min(overlayCanvas.width - 20, boxW),
+            height: Math.min(overlayCanvas.height - 20, boxH),
+            isPartial: parsed.isPartial,
+            labelText: `LABEL DETECTED | PO: ${parsed.po} | Size: ${parsed.size} | Qty: ${parsed.totalUnits}`,
+            expiresAt: Date.now() + 1500
+          };
+
+          // Panoramic Debouncing: Ignore exact same (PO + Size) within 5 seconds
+          const debounceKey = `${parsed.po}_${parsed.size}`;
+          const now = Date.now();
+          if (!state.scanDebounceMap.has(debounceKey) || (now - state.scanDebounceMap.get(debounceKey) > 5000)) {
+            state.scanDebounceMap.set(debounceKey, now);
+
+            triggerScanBeepSound();
+            addInventoryItem(parsed.productCode, parsed.po, parsed.size, parsed.totalUnits, parsed.isPartial);
+          }
+        }
+      } catch (err) {
+        console.error('Frame process error:', err);
+      } finally {
+        state.isScanningWorkerBusy = false;
+      }
+    }
+
+    // Camera Stream Management
+    async function startCamera() {
+      try {
+        switchModeToLive();
+        elements.ocrStatusBadge.textContent = 'Starting Camera...';
+
+        const constraints = {
+          video: {
+            facingMode: { ideal: state.currentCameraFacing },
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          }
+        };
+
+        state.videoStream = await navigator.mediaDevices.getUserMedia(constraints);
+        elements.webcam.srcObject = state.videoStream;
+        
+        elements.webcam.onloadedmetadata = () => {
+          elements.webcam.play();
+          state.isStreaming = true;
+          elements.cameraPlaceholder.classList.add('hidden');
+          elements.laserBeam.classList.remove('hidden');
+          elements.btnStartCamera.classList.add('hidden');
+          elements.btnStopCamera.disabled = false;
+          elements.btnSwitchCamera.disabled = false;
+          elements.ocrStatusBadge.textContent = 'Live Sweep Active';
+          elements.statusPing.className = 'w-3 h-3 rounded-full bg-emerald-500 animate-ping';
+          
+          resizeCanvasOverlay();
+          startLiveCameraLoop();
+        };
+      } catch (err) {
+        console.error('Camera start failed:', err);
+        alert('Could not access camera. Try uploading an image or test sample label.');
+        elements.ocrStatusBadge.textContent = 'Camera Error';
+      }
+    }
+
+    function stopCamera() {
+      if (state.videoStream) {
+        state.videoStream.getTracks().forEach(track => track.stop());
+        state.videoStream = null;
+      }
+      state.isStreaming = false;
+      elements.webcam.srcObject = null;
+      elements.cameraPlaceholder.classList.remove('hidden');
+      elements.laserBeam.classList.add('hidden');
+      elements.btnStartCamera.classList.remove('hidden');
+      elements.btnStopCamera.disabled = true;
+      elements.btnSwitchCamera.disabled = true;
+      elements.ocrStatusBadge.textContent = 'Camera Stopped';
+      elements.statusPing.className = 'w-3 h-3 rounded-full bg-slate-600';
+      state.activeBoundingBox = null;
+    }
+
+    async function switchCamera() {
+      state.currentCameraFacing = state.currentCameraFacing === 'environment' ? 'user' : 'environment';
+      stopCamera();
+      await startCamera();
+    }
+
+    // MODE SWITCHING: Live Camera vs Uploaded Image
+    function switchModeToLive() {
+      state.isUploadingMode = false;
+      elements.modeBanner.classList.add('hidden');
+      elements.uploadCanvas.classList.add('hidden');
+      elements.webcam.classList.remove('hidden');
+      elements.cameraPlaceholder.classList.remove('hidden');
+      state.activeBoundingBox = null;
+    }
+
+    function switchModeToUpload() {
+      stopCamera();
+      state.isUploadingMode = true;
+      elements.modeBanner.classList.remove('hidden');
+      elements.cameraPlaceholder.classList.add('hidden');
+      elements.webcam.classList.add('hidden');
+      elements.uploadCanvas.classList.remove('hidden');
+      elements.laserBeam.classList.add('hidden');
+      elements.ocrStatusBadge.textContent = 'Uploaded Image Mode';
+    }
+
+    // UPLOAD IMAGE FROM GALLERY FALLBACK
+    async function handleImageUpload(file) {
+      if (!file) return;
+
+      switchModeToUpload();
+      elements.ocrStatusBadge.textContent = 'Processing Image...';
+
+      const img = new Image();
+      img.onload = async () => {
+        state.uploadedImageElement = img;
+        const canvas = elements.uploadCanvas;
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+
+        resizeCanvasOverlay();
+
+        // Run OCR on uploaded image
+        let ocrResult = null;
+        if (state.tesseractWorker) {
+          ocrResult = await state.tesseractWorker.recognize(img);
+        } else {
+          ocrResult = await Tesseract.recognize(img, 'eng');
+        }
+
+        const parsed = parseBoxLabelOCR(ocrResult);
+
+        elements.rawOCRLog.textContent = parsed.rawText.trim() || '[Empty image text]';
+        elements.previewProdCode.textContent = parsed.productCode;
+        elements.previewPO.textContent = parsed.po || '--';
+        elements.previewSize.textContent = parsed.size || '--';
+        elements.previewUnits.textContent = parsed.totalUnits !== null ? parsed.totalUnits : '--';
+
+        if (parsed.isValid) {
+          elements.ocrStatusBadge.textContent = 'Label Found!';
+          
+          // Calculate Bounding Box relative to overlay canvas
+          const overlayCanvas = elements.overlayCanvas;
+          const scaleX = overlayCanvas.width / img.width;
+          const scaleY = overlayCanvas.height / img.height;
+
+          let boxX, boxY, boxW, boxH;
+
+          if (parsed.unifiedBox) {
+            const pX = (parsed.unifiedBox.maxX - parsed.unifiedBox.minX) * 0.1;
+            const pY = (parsed.unifiedBox.maxY - parsed.unifiedBox.minY) * 0.15;
+            boxX = (parsed.unifiedBox.minX - pX) * scaleX;
+            boxY = (parsed.unifiedBox.minY - pY) * scaleY;
+            boxW = (parsed.unifiedBox.maxX - parsed.unifiedBox.minX + pX * 2) * scaleX;
+            boxH = (parsed.unifiedBox.maxY - parsed.unifiedBox.minY + pY * 2) * scaleY;
+          } else {
+            boxW = overlayCanvas.width * 0.85;
+            boxH = overlayCanvas.height * 0.7;
+            boxX = (overlayCanvas.width - boxW) / 2;
+            boxY = (overlayCanvas.height - boxH) / 2;
+          }
+
+          state.activeBoundingBox = {
+            x: Math.max(10, boxX),
+            y: Math.max(10, boxY),
+            width: Math.min(overlayCanvas.width - 20, boxW),
+            height: Math.min(overlayCanvas.height - 20, boxH),
+            isPartial: parsed.isPartial,
+            labelText: `LABEL DETECTED | PO: ${parsed.po} | Size: ${parsed.size} | Qty: ${parsed.totalUnits}`,
+            expiresAt: Date.now() + 60000 // Persistent display in image upload mode
+          };
+
+          triggerScanBeepSound();
+          addInventoryItem(parsed.productCode, parsed.po, parsed.size, parsed.totalUnits, parsed.isPartial);
+        } else {
+          elements.ocrStatusBadge.textContent = 'No Box Label Parsed';
+          alert('Could not cleanly parse PO, Size, and Units from image. You can add it manually using "Manual Entry".');
+        }
+      };
+
+      img.src = URL.createObjectURL(file);
+    }
+
+    // Inventory State & Storage
+    function addInventoryItem(prodCode, po, size, totalUnits, isPartial = false) {
+      const newItem = {
+        id: 'box_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+        productCode: prodCode || '18181-0629',
+        po: String(po).toUpperCase(),
+        size: String(size).toUpperCase(),
+        units: Number(totalUnits),
+        status: isPartial ? 'PARTIAL' : 'COMPLETE',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        date: new Date().toLocaleDateString()
+      };
+
+      state.inventory.unshift(newItem);
+      saveAndRender();
+    }
+
+    function saveAndRender() {
+      localStorage.setItem('crs_inventory_log', JSON.stringify(state.inventory));
+      renderDashboard();
+    }
+
+    // Render Dashboard KPIs & Inventory Table
+    function renderDashboard() {
+      const items = state.inventory;
+      
+      const totalBoxes = items.length;
+      const partialBoxes = items.filter(i => i.status === 'PARTIAL').length;
+      const totalPants = items.reduce((acc, i) => acc + (i.units || 0), 0);
+      const partialRatio = totalBoxes > 0 ? Math.round((partialBoxes / totalBoxes) * 100) : 0;
+
+      elements.kpiTotalBoxes.textContent = totalBoxes;
+      elements.kpiPartialBoxes.textContent = partialBoxes;
+      elements.kpiPartialRatio.textContent = `(${partialRatio}%)`;
+      elements.kpiTotalPants.textContent = totalPants.toLocaleString();
+
+      const query = elements.searchInput.value.trim().toLowerCase();
+      const statusFilter = elements.filterStatus.value;
+
+      const filteredItems = items.filter(item => {
+        const matchesQuery = (item.productCode || '').toLowerCase().includes(query) ||
+                             item.po.toLowerCase().includes(query) ||
+                             item.size.toLowerCase().includes(query);
+        const matchesStatus = statusFilter === 'ALL' || item.status === statusFilter;
+        return matchesQuery && matchesStatus;
+      });
+
+      elements.inventoryTableBody.innerHTML = '';
+
+      if (filteredItems.length === 0) {
+        elements.emptyState.classList.remove('hidden');
+      } else {
+        elements.emptyState.classList.add('hidden');
+        
+        filteredItems.forEach((item, index) => {
+          const tr = document.createElement('tr');
+          
+          // Highlight Partial Rows in Light Orange/Red
+          if (item.status === 'PARTIAL') {
+            tr.className = 'bg-rose-950/40 hover:bg-rose-900/50 border-l-4 border-l-rose-500 transition';
+          } else {
+            tr.className = 'hover:bg-slate-900/80 transition';
+          }
+
+          tr.innerHTML = `
+            <td class="py-3 px-3 text-slate-500 text-[11px] font-mono">${filteredItems.length - index}</td>
+            <td class="py-3 px-3 font-bold text-indigo-400 font-mono">${item.productCode}</td>
+            <td class="py-3 px-3 font-bold text-slate-100 font-mono">${item.po}</td>
+            <td class="py-3 px-3 font-bold text-blue-400 font-mono">${item.size}</td>
+            <td class="py-3 px-3 text-center font-bold font-mono text-slate-200">${item.units}</td>
+            <td class="py-3 px-3">
+              ${
+                item.status === 'PARTIAL' 
+                  ? `<span class="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                       <i data-lucide="alert-circle" class="w-3 h-3"></i> Partial (كسر)
+                     </span>`
+                  : `<span class="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                       <i data-lucide="check-circle-2" class="w-3 h-3"></i> Complete (كاملة)
+                     </span>`
+              }
+            </td>
+            <td class="py-3 px-3 text-right text-slate-400 text-[11px] font-mono">${item.timestamp}</td>
+            <td class="py-3 px-3 text-center space-x-1">
+              <button onclick="editEntry('${item.id}')" class="p-1 text-slate-400 hover:text-blue-400 transition" title="Edit Entry">
+                <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
+              </button>
+              <button onclick="deleteEntry('${item.id}')" class="p-1 text-slate-400 hover:text-rose-400 transition" title="Delete Entry">
+                <i data-lucide="trash" class="w-3.5 h-3.5"></i>
+              </button>
+            </td>
+          `;
+
+          elements.inventoryTableBody.appendChild(tr);
+        });
+
+        lucide.createIcons();
+      }
+    }
+
+    // Edit / Delete Handlers
+    window.editEntry = function(id) {
+      const item = state.inventory.find(i => i.id === id);
+      if (!item) return;
+
+      elements.editEntryId.value = item.id;
+      elements.inputProdCode.value = item.productCode || '18181-0629';
+      elements.inputPO.value = item.po;
+      elements.inputSize.value = item.size;
+      elements.inputUnits.value = item.units;
+      elements.modalTitle.textContent = 'Edit Box Record';
+      elements.modalEntry.classList.remove('hidden');
+    };
+
+    window.deleteEntry = function(id) {
+      if (confirm('Are you sure you want to delete this box record?')) {
+        state.inventory = state.inventory.filter(i => i.id !== id);
+        saveAndRender();
+      }
+    };
+
+    // Export to Excel using SheetJS
+    function exportToExcel() {
+      if (state.inventory.length === 0) {
+        alert('No inventory records to export.');
+        return;
+      }
+
+      const excelData = state.inventory.map((item, index) => ({
+        'Item #': index + 1,
+        'Product Code': item.productCode || '18181-0629',
+        'PO Number': item.po,
+        'Size': item.size,
+        'Total Units': item.units,
+        'Box Capacity': item.units === 20 ? 'Full (20)' : 'Partial (<20)',
+        'Status Arabic': item.status === 'PARTIAL' ? 'كسر الكرتونة' : 'كاملة',
+        'Scanned Date': item.date,
+        'Scanned Time': item.timestamp
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(excelData);
+      worksheet['!cols'] = [
+        { wch: 8 },  // Item #
+        { wch: 16 }, // Product Code
+        { wch: 16 }, // PO Number
+        { wch: 12 }, // Size
+        { wch: 12 }, // Total Units
+        { wch: 16 }, // Capacity
+        { wch: 16 }, // Status
+        { wch: 14 }, // Date
+        { wch: 14 }  // Time
+      ];
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'CRS Inventory Log');
+
+      const filename = `CRS_Denim_Inventory_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      XLSX.writeFile(workbook, filename);
+    }
+
+    // Modal Control
+    function openManualEntryModal() {
+      elements.editEntryId.value = '';
+      elements.formEntry.reset();
+      elements.inputProdCode.value = '18181-0629';
+      elements.modalTitle.textContent = 'Add Box Entry Manually';
+      elements.modalEntry.classList.remove('hidden');
+    }
+
+    function closeModal() {
+      elements.modalEntry.classList.add('hidden');
+    }
+
+    // Real Sample Test Label (Matches exact image provided)
+    function injectRealSampleScan() {
+      const prodCode = '18181-0629';
+      const samplePO = '2100238518';
+      const sampleSize = '31 30';
+      const sampleUnits = 20;
+
+      elements.previewProdCode.textContent = prodCode;
+      elements.previewPO.textContent = samplePO;
+      elements.previewSize.textContent = sampleSize;
+      elements.previewUnits.textContent = sampleUnits;
+      elements.scanConfidence.textContent = 'Confidence: 99%';
+      elements.rawOCRLog.textContent = `Print Date: 09/28/2026\nProduct Code: ${prodCode}\nPO: ${samplePO}\nItem: 00010\nRFID: E\nMade In: EGYPT\nSize: ${sampleSize}   Total Units: ${sampleUnits}`;
+
+      const overlayCanvas = elements.overlayCanvas;
+      const boxW = overlayCanvas.width * 0.8;
+      const boxH = overlayCanvas.height * 0.7;
+      
+      state.activeBoundingBox = {
+        x: (overlayCanvas.width - boxW) / 2,
+        y: (overlayCanvas.height - boxH) / 2,
+        width: boxW,
+        height: boxH,
+        isPartial: false,
+        labelText: `LABEL DETECTED | PO: ${samplePO} | Size: ${sampleSize} | Qty: ${sampleUnits}`,
+        expiresAt: Date.now() + 3000
+      };
+
+      triggerScanBeepSound();
+      addInventoryItem(prodCode, samplePO, sampleSize, sampleUnits, false);
+    }
+
+    // Event Listeners
+    elements.btnStartCamera.addEventListener('click', startCamera);
+    elements.btnStopCamera.addEventListener('click', stopCamera);
+    elements.btnSwitchCamera.addEventListener('click', switchCamera);
+    elements.btnBackToLive.addEventListener('click', startCamera);
+
+    // Image Upload Events
+    elements.btnTriggerUpload.addEventListener('click', () => elements.fileUploader.click());
+    elements.btnTriggerUploadStandby.addEventListener('click', () => elements.fileUploader.click());
+    elements.fileUploader.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files[0]) {
+        handleImageUpload(e.target.files[0]);
+      }
+    });
+
+    elements.btnExportTop.addEventListener('click', exportToExcel);
+    elements.btnExportBottom.addEventListener('click', exportToExcel);
+
+    elements.btnAddManual.addEventListener('click', openManualEntryModal);
+    elements.btnCloseModal.addEventListener('click', closeModal);
+    elements.btnCancelModal.addEventListener('click', closeModal);
+
+    elements.btnTestRealSample.addEventListener('click', injectRealSampleScan);
+    elements.btnTestRealSampleMobile.addEventListener('click', injectRealSampleScan);
+
+    elements.searchInput.addEventListener('input', renderDashboard);
+    elements.filterStatus.addEventListener('change', renderDashboard);
+
+    elements.btnClearAll.addEventListener('click', () => {
+      if (confirm('Are you sure you want to clear all scanned inventory records?')) {
+        state.inventory = [];
+        saveAndRender();
+      }
+    });
+
+    elements.formEntry.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const id = elements.editEntryId.value;
+      const prodCode = elements.inputProdCode.value.trim();
+      const po = elements.inputPO.value.trim();
+      const size = elements.inputSize.value.trim();
+      const units = parseInt(elements.inputUnits.value, 10);
+      const isPartial = units < 20;
+
+      if (id) {
+        const index = state.inventory.findIndex(i => i.id === id);
+        if (index !== -1) {
+          state.inventory[index].productCode = prodCode;
+          state.inventory[index].po = po.toUpperCase();
+          state.inventory[index].size = size.toUpperCase();
+          state.inventory[index].units = units;
+          state.inventory[index].status = isPartial ? 'PARTIAL' : 'COMPLETE';
+        }
+      } else {
+        addInventoryItem(prodCode, po, size, units, isPartial);
+      }
+
+      saveAndRender();
+      closeModal();
+    });
+
+    // Init App
+    initTesseract();
+    renderDashboard();
+  </script>
+</body>
+</html>
